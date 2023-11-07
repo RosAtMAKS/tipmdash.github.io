@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vue.js SPA with Bootstrap</title>
+  <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    html {
+      font-size: smaller;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="container">
+    <div class="text-center my-4">
+      <label for="start-date">Start Date: </label>
+      <input type="date" id="start-date" v-model="startDate" class="form-control-inline">
+      <label for="end-date">End Date: </label>
+      <input type="date" id="end-date" v-model="endDate" class="form-control-inline">
+    </div>
+    <div class="text-center my-2">
+      <button class="btn btn-primary" @click="filterData">Filter</button>
+    </div>
+    
+    <div class="row">
+      <div class="col-md-6">
+        <best-sellers ref="bestSellersComponent" :start-date="startDate" :end-date="endDate"></best-sellers>
+        <component-three ref="componentThree"  :start-date="startDate" :end-date="endDate"></component-three>
+      </div>
+      
+      <div class="col-md-6">
+        <component-two ref="componentTwo" :start-date="startDate" :end-date="endDate"></component-two>
+        <component-four ref="componentFour"  :start-date="startDate" :end-date="endDate"></component-four>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+  <script>
+Vue.component('best-sellers', {
+  props: ['startDate', 'endDate'],
+  template: `
+    <div class="card my-2">
+      <div class="card-body">
+        <h5 class="card-title">Best Sellers</h5>
+        <!-- Loading Spinner -->
+        <div v-if="isLoading && hasFiltered">
+          <div class="d-flex justify-content-center">
+            <div class="spinner-border" role="status">
+              <span class="sr-only">Loading...</span>
+            </div>
+          </div>
+        </div>
+        <!-- Table -->
+        <div v-else>
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Product Name</th>
+              <th>SKU</th>
+              <th>Total Sales</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(item, index) in items" :key="index">
+              <td>{{ index + 1 }}</td>
+              <td>{{ item.product_name }}</td>
+              <td>{{ item.sku }}</td>
+              <td>{{ item.total_sales }}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  `,
+  data() {
+    return {
+      items: [],
+      isLoading: false,
+      hasFiltered: false
+    };
+  },
+  mounted() {
+    // Fetch the data when the component is mounted
+    this.fetchData();
+  },
+  methods: {
+  fetchData() {
+
+    if (this.hasFiltered) {
+      this.isLoading = true;  // Set loading to true
+    }
+
+    const startDateString = `${this.startDate} 00:00:00`;
+    const endDateString = `${this.endDate} 23:59:59`;
+
+    fetch(`https://tipmrebuilders.com/wp-json/myplugin/v1/top_products/?start_date=${encodeURIComponent(startDateString)}&end_date=${encodeURIComponent(endDateString)}`)
+      .then(response => response.json())
+      .then(data => {
+        // Introduce a delay of 3 seconds
+        setTimeout(() => {
+          this.items = data.slice(0, 10);  // Update data
+          this.isLoading = false;  // Set loading to false
+        }, 1000);
+      });
+  }
+}
+});
+
+Vue.component('component-two', {
+  props: ['startDate', 'endDate'],
+  data() {
+    return {
+      isLoading: false,
+      hasFiltered: false,
+      chart: null,
+      methodCounts: { 'sms': 0, 'email': 0, 'customer_portal': 0 }
+    };
+  },
+  template: `
+    <div class="card my-2">
+      <div class="card-body">
+        <h5 class="card-title">Provide VIN Method Stats</h5>
+        
+        <!-- Donut Chart -->
+        <canvas id="donutChart" v-show="!isLoading && hasFiltered"></canvas>
+
+        <!-- Loading Spinner -->
+        <div v-show="isLoading && hasFiltered">
+          <div class="d-flex justify-content-center">
+            <div class="spinner-border" role="status">
+              <span class="sr-only">Loading...</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Placeholder for when no data is available -->
+        <div v-show="!isLoading && !hasFiltered">
+          <span>N/A</span>
+        </div>
+      </div>
+    </div>`,
+  methods: {
+    fetchData() {
+      this.isLoading = true;
+
+      const url = `https://tipmrebuilders.com/rest/provide_your_vin_tracker.php?type=get_data_by_date_range&site=tipm&date_from=${this.startDate}&date_to=${this.endDate}`;
+
+      console.log(url);
+      // Fetching data...
+      axios.get(url)
+        .then(response => {
+
+          console.log(response.data);
+
+          // Reset methodCounts before processing new data
+      this.methodCounts = { 'sms': 0, 'email': 0, 'customer_portal': 0 };
+
+          // Process the response data
+          this.methodCounts = response.data.reduce((acc, item) => {
+            if (item.method in acc) {
+              acc[item.method]++;
+            }
+            return acc;
+          }, this.methodCounts);
+
+          this.createChart();
+          this.isLoading = false;
+          this.hasFiltered = true;
+        })
+        .catch(error => {
+          console.error("Error fetching data: ", error);
+          this.isLoading = false;
+        });
+    },
+    createChart() {
+      var ctx = document.getElementById('donutChart').getContext('2d');
+      var data = {
+        datasets: [{
+          data: [this.methodCounts.sms, this.methodCounts.email, this.methodCounts.customer_portal],
+          backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+        }],
+        labels: ['SMS', 'Email', 'Customer Portal']
+      };
+      // Destroy any existing chart to re-initialize
+      if (this.chart) {
+        this.chart.destroy();
+      }
+      this.chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: data
+      });
+    }
+  },
+  mounted() {
+    this.createChart(); // Initialize the chart when the component is mounted
+  }
+});
+
+
+
+Vue.component('component-three', {
+  props: ['startDate', 'endDate'],
+  template: `
+    <div class="card my-2">
+      <div class="card-body">
+        <h5 class="card-title">Top Searced Vehicles</h5>
+        <!-- Loading Spinner -->
+        <div v-if="isLoading && hasFiltered">
+          <div class="d-flex justify-content-center">
+            <div class="spinner-border" role="status">
+              <span class="sr-only">Loading...</span>
+            </div>
+          </div>
+        </div>
+        <!-- Table -->
+        <div v-else>
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Vehicle Name</th>
+              <th>No. of Searches</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(item, index) in items" :key="index">
+              <td>{{ index + 1 }}</td>
+              <td>{{ item.vehicle }}</td>
+              <td>{{ item.search_count }}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  `,
+  data() {
+    return {
+      items: [],
+      isLoading: false,
+      hasFiltered: false
+    };
+  },
+  mounted() {
+    // Fetch the data when the component is mounted
+    //this.fetchData();
+  },
+  methods: {
+    fetchData() {
+  if (this.hasFiltered) {
+    this.isLoading = true;  // Set loading to true
+  }
+
+  fetch(`https://tipmrebuilders.com/rest/vehicle_search_history.php?type=get_data_by_date_range&site=tipm&date_from=${this.startDate}&date_to=${this.endDate}`)
+    .then(response => response.json())
+    .then(data => {
+      console.log("Data received:", data); // Inspect the data here
+      setTimeout(() => {
+        // Sort the data based on search_count in descending order
+        this.items = data
+          .sort((a, b) => b.search_count - a.search_count)
+          .slice(0, 10);  // Update data and get top 10
+
+        this.isLoading = false;  // Set loading to false
+      }, 1000);
+    });
+}
+
+}
+});
+
+Vue.component('component-four', {
+  props: ['startDate', 'endDate'],
+  data() {
+    return {
+      isLoading: false,
+      hasFiltered: false,
+      chart: null,
+      methodCounts: { 'purchase': 0, 'declined': 0 }
+    };
+  },
+  template: `
+    <div class="card my-2">
+      <div class="card-body">
+        <h5 class="card-title">Vehicle Configuration Stats</h5>
+        
+        <!-- Donut Chart -->
+        <canvas id="rvcChart" v-show="!isLoading && hasFiltered"></canvas>
+
+        <!-- Loading Spinner -->
+        <div v-show="isLoading && hasFiltered">
+          <div class="d-flex justify-content-center">
+            <div class="spinner-border" role="status">
+              <span class="sr-only">Loading...</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Placeholder for when no data is available -->
+        <div v-show="!isLoading && !hasFiltered">
+          <span>N/A</span>
+        </div>
+      </div>
+    </div>`,
+  methods: {
+    fetchData() {
+      this.isLoading = true;
+
+      const url = `https://dev.tipmrebuilders.com/wp-json/wc/v3/vehicle-config-stats/${this.startDate}/${this.endDate}`;
+
+      console.log(url);
+      // Fetching data...
+      axios.get(url)
+        .then(response => {
+
+          console.log(response.data);
+
+          // Assuming response.data is an object with 'purchase' and 'declined' properties
+    this.methodCounts.purchase = response.data.purchase;
+    this.methodCounts.declined = response.data.declined;
+
+          this.createChart();
+          this.isLoading = false;
+          this.hasFiltered = true;
+        })
+        .catch(error => {
+          console.error("Error fetching data: ", error);
+          this.isLoading = false;
+        });
+    },
+    createChart() {
+      var ctx = document.getElementById('rvcChart').getContext('2d');
+      var chartData = {
+        datasets: [{
+          data: [this.methodCounts.purchase, this.methodCounts.declined], // Updated to match object properties
+          backgroundColor: ['#62ad42', '#f7b400'] // You should have as many colors as you have data points
+        }],
+        labels: ['Purchased', 'Declined'] // Make sure these labels are what you want to show
+      };
+      // Destroy any existing chart to re-initialize
+      if (this.chart) {
+        this.chart.destroy();
+      }
+      this.chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: chartData
+      });
+    }
+  },
+  mounted() {
+    this.createChart(); // Initialize the chart when the component is mounted
+  }
+});
+
+new Vue({
+  el: '#app',
+  data: {
+    startDate: null,
+    endDate: null,
+    items: []
+  },
+  methods: {
+    filterData() {
+  // Set hasFiltered flag and Trigger fetchData in the best-sellers component
+  this.$refs.bestSellersComponent.hasFiltered = true;
+  this.$refs.bestSellersComponent.fetchData();
+
+  // Set hasFiltered flag and Trigger fetchData in component-two, component-three, and component-four
+  this.$refs.componentTwo.hasFiltered = true;
+  this.$refs.componentTwo.fetchData();
+  
+  this.$refs.componentThree.hasFiltered = true;
+  this.$refs.componentThree.fetchData();
+
+  this.$refs.componentFour.hasFiltered = true;
+  this.$refs.componentFour.fetchData();
+}
+  }
+});
+
+
+
+  </script>
+</body>
+</html>
